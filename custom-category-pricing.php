@@ -3,7 +3,7 @@
  * Plugin Name: Category Pricing Dashboard
  * Description: Overrides WooCommerce prices based on Category, Quantity, and Tier logic via a custom Dashboard.
  * Version: 2.0
- * Author: Gemini
+ * Author: D Kandekore
  */
 
 if ( ! defined( 'ABSPATH' ) ) exit;
