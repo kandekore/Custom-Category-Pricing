@@ -1,20 +1,20 @@
 <?php
 /**
- * Plugin Name: Category Pricing Dashboard
- * Description: Overrides WooCommerce prices based on Category, Quantity, and Tier logic via a custom Dashboard.
- * Version: 2.0
+ * Plugin Name: Category Pricing Dashboard (Fixed)
+ * Description: Overrides WooCommerce prices based on Category, Quantity, and Tier logic.
+ * Version: 2.1
  * Author: D Kandekore
  */
 
 if ( ! defined( 'ABSPATH' ) ) exit;
 
 // ==============================================================================
-// 1. CREATE THE DASHBOARD MENU
+// 1. DASHBOARD MENU
 // ==============================================================================
 add_action('admin_menu', 'cpd_add_admin_menu');
 function cpd_add_admin_menu() {
     add_menu_page(
-        'Category Pricing Rules', 
+        'Category Pricing', 
         'Category Pricing', 
         'manage_options', 
         'cpd-pricing-rules', 
@@ -25,7 +25,7 @@ function cpd_add_admin_menu() {
 }
 
 // ==============================================================================
-// 2. REGISTER SETTINGS & SAVE LOGIC
+// 2. REGISTER SETTINGS
 // ==============================================================================
 add_action('admin_init', 'cpd_settings_init');
 function cpd_settings_init() {
@@ -33,103 +33,120 @@ function cpd_settings_init() {
 }
 
 // ==============================================================================
-// 3. THE DASHBOARD HTML (UI)
+// 3. THE DASHBOARD HTML
 // ==============================================================================
 function cpd_options_page_html() {
-    // Get existing rules from database
     $rules = get_option('cpd_pricing_rules', []);
-    // Get all product categories
     $categories = get_terms(['taxonomy' => 'product_cat', 'hide_empty' => false]);
     ?>
     <div class="wrap">
         <h1>Category Pricing Manager</h1>
-        <p>Define tiered pricing logic per category. Rules are processed from top to bottom.</p>
-        
         <form action="options.php" method="post">
             <?php settings_fields('cpd_plugin'); ?>
             
             <div id="cpd-rules-container">
                 <?php 
-                // If we have saved rules, loop through them. Otherwise show one blank form.
                 if (!empty($rules)) {
-                    foreach ($rules as $index => $rule) {
-                        cpd_render_rule_box($index, $rule, $categories);
+                    foreach ($rules as $i => $rule) {
+                        cpd_render_rule_box($i, $rule, $categories);
                     }
-                } else {
-                    cpd_render_rule_box(0, null, $categories);
                 }
                 ?>
             </div>
 
-            <button type="button" class="button" onclick="addRule()">+ Add Another Category Rule</button>
-            <br><br>
+            <div style="margin-top: 20px;">
+                <button type="button" class="button button-primary" id="add-rule-btn">+ Add New Category Rule</button>
+            </div>
+            
+            <br>
             <?php submit_button('Save Pricing Rules'); ?>
         </form>
     </div>
 
-    <script>
-        function addRule() {
-            var container = document.getElementById('cpd-rules-container');
-            var count = container.children.length;
-            var template = `<?php cpd_render_rule_box('INDEX', null, $categories, true); ?>`;
-            var newRow = template.replace(/INDEX/g, count);
-            var div = document.createElement('div');
-            div.innerHTML = newRow;
-            container.appendChild(div.firstElementChild);
-        }
+    <div id="template-rule" style="display:none;">
+        <?php cpd_render_rule_box('__RULE_INDEX__', null, $categories); ?>
+    </div>
 
-        function addTier(ruleIndex) {
-            var container = document.getElementById('tiers-container-' + ruleIndex);
-            var count = container.querySelectorAll('.tier-row').length;
+    <div id="template-tier" style="display:none;">
+        <div class="tier-row" style="background: #f9f9f9; padding: 10px; margin-bottom: 5px; border: 1px solid #ddd; display: flex; gap: 10px; align-items: flex-end;">
+            <div>
+                <label>Qty Threshold:</label><br>
+                <input type="number" name="cpd_pricing_rules[__RULE_INDEX__][tiers][__TIER_INDEX__][qty]" placeholder="e.g. 3" style="width: 80px;" required>
+            </div>
+            <div>
+                <label>Tier Price (£):</label><br>
+                <input type="number" step="0.01" name="cpd_pricing_rules[__RULE_INDEX__][tiers][__TIER_INDEX__][price]" placeholder="e.g. 32.00" style="width: 80px;" required>
+            </div>
+            <div>
+                <label>Discount Type:</label><br>
+                <select name="cpd_pricing_rules[__RULE_INDEX__][tiers][__TIER_INDEX__][type]">
+                    <option value="step">Step (First X items only)</option>
+                    <option value="global">Global Override (Apply to ALL)</option>
+                </select>
+            </div>
+            <div>
+                <label>If Exceeding Qty:</label><br>
+                <select name="cpd_pricing_rules[__RULE_INDEX__][tiers][__TIER_INDEX__][overage]">
+                    <option value="base">Charge Remainder at Base Price</option>
+                    <option value="tier">Charge Remainder at Tier Price</option>
+                </select>
+            </div>
+            <div>
+                <button type="button" class="button" onclick="this.closest('.tier-row').remove()">Remove</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+    document.addEventListener('DOMContentLoaded', function() {
+        // ADD RULE CLICK
+        document.getElementById('add-rule-btn').addEventListener('click', function() {
+            var container = document.getElementById('cpd-rules-container');
+            var ruleIndex = container.querySelectorAll('.cpd-rule-box').length;
             
-            var html = `
-                <div class="tier-row" style="background: #f9f9f9; padding: 10px; margin-bottom: 5px; border: 1px solid #ddd; display: flex; gap: 10px; align-items: flex-end;">
-                    <div>
-                        <label>Qty Threshold:</label><br>
-                        <input type="number" name="cpd_pricing_rules[${ruleIndex}][tiers][${count}][qty]" value="" placeholder="e.g. 3" style="width: 80px;" required>
-                    </div>
-                    <div>
-                        <label>Tier Price (£):</label><br>
-                        <input type="number" step="0.01" name="cpd_pricing_rules[${ruleIndex}][tiers][${count}][price]" value="" placeholder="e.g. 32.00" style="width: 80px;" required>
-                    </div>
-                    <div>
-                        <label>Discount Type:</label><br>
-                        <select name="cpd_pricing_rules[${ruleIndex}][tiers][${count}][type]">
-                            <option value="step">Step (First X items only)</option>
-                            <option value="global">Global Override (Apply to ALL)</option>
-                        </select>
-                    </div>
-                    <div>
-                        <label>If Exceeding Qty, Charge Extra At:</label><br>
-                        <select name="cpd_pricing_rules[${ruleIndex}][tiers][${count}][overage]">
-                            <option value="base">Original Base Price</option>
-                            <option value="tier">This Tier Price</option>
-                        </select>
-                    </div>
-                    <div>
-                        <button type="button" class="button" onclick="this.parentElement.parentElement.remove()">Remove</button>
-                    </div>
-                </div>
-            `;
-            container.insertAdjacentHTML('beforeend', html);
-        }
+            // Get template HTML
+            var template = document.getElementById('template-rule').innerHTML;
+            
+            // Replace placeholder with actual index
+            template = template.replace(/__RULE_INDEX__/g, ruleIndex);
+            
+            // Append to container
+            var div = document.createElement('div');
+            div.innerHTML = template;
+            container.appendChild(div.firstElementChild);
+        });
+    });
+
+    // ADD TIER CLICK (Must be global function)
+    function addTier(btn, ruleIndex) {
+        var container = document.getElementById('tiers-container-' + ruleIndex);
+        var tierIndex = container.querySelectorAll('.tier-row').length;
+        
+        // Get template HTML
+        var template = document.getElementById('template-tier').innerHTML;
+        
+        // Replace placeholders
+        template = template.replace(/__RULE_INDEX__/g, ruleIndex);
+        template = template.replace(/__TIER_INDEX__/g, tierIndex);
+        
+        // Append
+        var div = document.createElement('div');
+        div.innerHTML = template;
+        container.appendChild(div.firstElementChild);
+    }
     </script>
     <?php
 }
 
 // HELPER: Render a single rule box
-function cpd_render_rule_box($index, $rule = null, $categories = [], $is_js_template = false) {
-    // Default values
+function cpd_render_rule_box($index, $rule = null, $categories = []) {
     $selected_cat = $rule['cat_id'] ?? '';
     $base_price = $rule['base_price'] ?? '';
     $tiers = $rule['tiers'] ?? [];
-    
-    // For JS template, we need to return string instead of echo
-    if ($is_js_template) ob_start();
     ?>
     <div class="cpd-rule-box" style="background: #fff; border: 1px solid #ccd0d4; padding: 20px; margin-bottom: 20px; box-shadow: 0 1px 1px rgba(0,0,0,.04);">
-        <h3 style="margin-top:0;">Rule #<?php echo $index + 1; ?> 
-            <button type="button" style="float:right; color: #b32d2e;" class="button-link" onclick="this.parentElement.parentElement.remove()">Delete Rule</button>
+        <h3 style="margin-top:0;">Rule #<span class="rule-number"><?php echo is_numeric($index) ? $index + 1 : '{New}'; ?></span> 
+            <button type="button" style="float:right; color: #b32d2e;" class="button-link" onclick="this.closest('.cpd-rule-box').remove()">Delete Rule</button>
         </h3>
         
         <div style="display:flex; gap: 20px; margin-bottom: 20px;">
@@ -173,14 +190,14 @@ function cpd_render_rule_box($index, $rule = null, $categories = [], $is_js_temp
                             </select>
                         </div>
                         <div>
-                            <label>If Exceeding Qty, Charge Extra At:</label><br>
+                            <label>If Exceeding Qty:</label><br>
                             <select name="cpd_pricing_rules[<?php echo $index; ?>][tiers][<?php echo $t_index; ?>][overage]">
-                                <option value="base" <?php selected($tier['overage'], 'base'); ?>>Original Base Price</option>
-                                <option value="tier" <?php selected($tier['overage'], 'tier'); ?>>This Tier Price</option>
+                                <option value="base" <?php selected($tier['overage'], 'base'); ?>>Charge Remainder at Base Price</option>
+                                <option value="tier" <?php selected($tier['overage'], 'tier'); ?>>Charge Remainder at Tier Price</option>
                             </select>
                         </div>
                         <div>
-                            <button type="button" class="button" onclick="this.parentElement.parentElement.remove()">Remove</button>
+                            <button type="button" class="button" onclick="this.closest('.tier-row').remove()">Remove</button>
                         </div>
                     </div>
                     <?php
@@ -188,27 +205,32 @@ function cpd_render_rule_box($index, $rule = null, $categories = [], $is_js_temp
             }
             ?>
         </div>
-        <button type="button" class="button-secondary" onclick="addTier(<?php echo $index; ?>)">+ Add Tier</button>
+        <button type="button" class="button-secondary" onclick="addTier(this, '<?php echo $index; ?>')">+ Add Tier</button>
     </div>
     <?php
-    if ($is_js_template) return ob_get_clean();
 }
 
-// ==============================================================================
-// 4. THE CALCULATION ENGINE (MATH LOGIC)
-// ==============================================================================
-add_action('woocommerce_before_calculate_totals', 'cpd_apply_pricing_rules', 10, 1);
+/**
+ * 4. THE UPDATED MATH ENGINE
+ * Instead of set_price, we calculate the total "Saving" and apply it as a discount.
+ */
 
-function cpd_apply_pricing_rules($cart) {
+// 1. Remove the old price override hook
+// add_action('woocommerce_before_calculate_totals', 'cpd_apply_pricing_rules', 10, 1); 
+
+// 2. Add the Discount as a Cart Fee (This is much more accurate)
+add_action('woocommerce_cart_calculate_fees', 'cpd_apply_category_discounts', 10, 1);
+
+function cpd_apply_category_discounts($cart) {
     if (is_admin() && !defined('DOING_AJAX')) return;
-    if (did_action('woocommerce_before_calculate_totals') >= 2) return;
 
-    // 1. Load Rules from DB
     $rules = get_option('cpd_pricing_rules', []);
     if (empty($rules)) return;
 
-    // 2. Group Cart Quantities by Category
     $cat_totals = [];
+    $cat_base_prices = [];
+
+    // First Pass: Get totals per category
     foreach ($cart->get_cart() as $cart_item) {
         $product_id = $cart_item['product_id'];
         $terms = get_the_terms($product_id, 'product_cat');
@@ -220,90 +242,77 @@ function cpd_apply_pricing_rules($cart) {
         }
     }
 
-    // 3. Apply Rules
-    foreach ($cart->get_cart() as $cart_item) {
-        $product_id = $cart_item['product_id'];
-        $terms = get_the_terms($product_id, 'product_cat');
-        
-        $matched_rule = null;
-        $total_category_qty = 0;
+    $total_discount = 0;
 
-        // Find applicable rule for this product's category
-        if ($terms && !is_wp_error($terms)) {
-            foreach ($terms as $term) {
-                foreach ($rules as $rule) {
-                    if ($rule['cat_id'] == $term->term_id) {
-                        $matched_rule = $rule;
-                        $total_category_qty = $cat_totals[$term->term_id];
-                        break 2;
-                    }
-                }
+    // Second Pass: Calculate how much should be "saved" per category
+    foreach ($rules as $rule) {
+        $cat_id = $rule['cat_id'];
+        if (isset($cat_totals[$cat_id]) && $cat_totals[$cat_id] > 0) {
+            
+            $qty = $cat_totals[$cat_id];
+            $base_price = floatval($rule['base_price']);
+            
+            // Calculate what the cost SHOULD be
+            $actual_target_price = cpd_get_target_total_cost($qty, $rule);
+            
+            // Calculate what the cost IS currently (Standard Base Price * Qty)
+            $current_standard_cost = $qty * $base_price;
+            
+            // The difference is our discount
+            $discount_amount = $current_standard_cost - $actual_target_price;
+            
+            if ($discount_amount > 0) {
+                $total_discount += $discount_amount;
             }
         }
+    }
 
-        if ($matched_rule) {
-            $price = cpd_calculate_price($total_category_qty, $matched_rule);
-            $cart_item['data']->set_price($price);
-        }
+    // Apply the discount to the cart
+    if ($total_discount > 0) {
+        $cart->add_fee(__('Category Bulk Discount', 'cpd'), -$total_discount);
     }
 }
 
-// ==============================================================================
-// 5. THE MATH FUNCTION
-// ==============================================================================
-function cpd_calculate_price($qty, $rule) {
+// Helper to calculate the EXACT total cost for the category volume
+function cpd_get_target_total_cost($qty, $rule) {
     $base_price = floatval($rule['base_price']);
     $tiers = isset($rule['tiers']) ? $rule['tiers'] : [];
     
-    if (empty($tiers)) return $base_price;
+    if (empty($tiers)) return $qty * $base_price;
 
-    // Sort tiers by Qty Descending (Highest first)
+    // Sort tiers: Highest Quantity first
     usort($tiers, function($a, $b) {
-        return $b['qty'] - $a['qty'];
+        return (int)$b['qty'] - (int)$a['qty'];
     });
 
     $applied_tier = null;
-
-    // Find highest threshold met
     foreach ($tiers as $tier) {
-        if ($qty >= $tier['qty']) {
+        if ($qty >= (int)$tier['qty']) {
             $applied_tier = $tier;
             break;
         }
     }
 
-    // If no tier met, return base price
-    if (!$applied_tier) return $base_price;
+    if (!$applied_tier) return $qty * $base_price;
 
     $tier_price = floatval($applied_tier['price']);
     $tier_qty = intval($applied_tier['qty']);
 
-    // LOGIC A: Global Override (e.g. 10 items @ £30 flat)
+    // 1. GLOBAL OVERRIDE
     if ($applied_tier['type'] === 'global') {
-        return $tier_price;
+        return $qty * $tier_price;
     }
 
-    // LOGIC B: Step Pricing (First 3 @ £32, rest @ Base)
+    // 2. STEP PRICING
     if ($applied_tier['type'] === 'step') {
-        // Items within the tier get tier_price
-        // Remainder gets either base_price OR tier_price depending on setting
-        
         $remainder_qty = $qty - $tier_qty;
-        
         $cost_first_batch = $tier_qty * $tier_price;
-        $cost_remainder = 0;
-
-        if ($applied_tier['overage'] === 'base') {
-            $cost_remainder = $remainder_qty * $base_price;
-        } else {
-            $cost_remainder = $remainder_qty * $tier_price;
-        }
-
-        $total_cost = $cost_first_batch + $cost_remainder;
         
-        // Return weighted average unit price
-        return $total_cost / $qty;
+        $remainder_price = ($applied_tier['overage'] === 'base') ? $base_price : $tier_price;
+        $cost_remainder = $remainder_qty * $remainder_price;
+
+        return $cost_first_batch + $cost_remainder;
     }
 
-    return $base_price;
+    return $qty * $base_price;
 }
